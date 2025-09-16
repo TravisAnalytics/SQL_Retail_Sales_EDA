@@ -1,12 +1,12 @@
-# Retail Sales Analysis SQL Project
+# SQL Retail Sales Analysis Project
 
 ## Project Overview
 
 **Project Title**: Retail Sales Analysis  
 **Level**: Beginner  
-**Database**: `p1_retail_db`
+**Database**: `retail_db`
 
-This project is designed to demonstrate SQL skills and techniques typically used by data analysts to explore, clean, and analyze retail sales data. The project involves setting up a retail sales database, performing exploratory data analysis (EDA), and answering specific business questions through SQL queries. This project is ideal for those who are starting their journey in data analysis and want to build a solid foundation in SQL.
+This project is designed to demonstrate SQL skills and techniques typically used by data analysts to explore, clean, and analyze retail sales data. The project involves setting up a retail sales database, performing exploratory data analysis (EDA), and answering specific business questions through SQL queries. This project uses MySQL to perform data analysis. 
 
 ## Objectives
 
@@ -21,6 +21,8 @@ This project is designed to demonstrate SQL skills and techniques typically used
 
 - **Database Creation**: The project starts by creating a database named `p1_retail_db`.
 - **Table Creation**: A table named `retail_sales` is created to store the sales data. The table structure includes columns for transaction ID, sale date, sale time, customer ID, gender, age, product category, quantity sold, price per unit, cost of goods sold (COGS), and total sale amount.
+- **Database Import**: Data is imported using LOCAL INFILE using data user specified path. 
+- **Null Value Identification**: Columns from data are filtered to replace blank values in .CSV files as 'NULL'. 
 
 ```sql
 CREATE DATABASE p1_retail_db;
@@ -39,6 +41,38 @@ CREATE TABLE retail_sales
     cogs FLOAT,
     total_sale FLOAT
 );
+
+LOAD DATA LOCAL INFILE '[User File Path Name]'
+INTO TABLE retail_sales_eda
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\r\n'
+IGNORE 1 LINES
+(
+ @transactions_id,
+ @sale_date,
+ @sale_time,
+ @customer_id,
+ @gender,
+ @age,
+ @category,
+ @quantiy,
+ @price_per_unit,
+ @cogs,
+ @total_sale
+)
+SET
+  transactions_id = NULLIF(@transactions_id,''),
+  sale_date       = NULLIF(@sale_date,''),
+  sale_time       = NULLIF(@sale_time,''),
+  customer_id     = @customer_id,
+  gender          = @gender,
+  age             = NULLIF(@age,''),
+  category        = @category,
+  quantiy         = NULLIF(@quantiy,''),
+  price_per_unit  = NULLIF(@price_per_unit,''),
+  cogs            = NULLIF(@cogs,''),
+  total_sale      = NULLIF(@total_sale,'');
 ```
 
 ### 2. Data Exploration & Cleaning
@@ -46,14 +80,24 @@ CREATE TABLE retail_sales
 - **Record Count**: Determine the total number of records in the dataset.
 - **Customer Count**: Find out how many unique customers are in the dataset.
 - **Category Count**: Identify all unique product categories in the dataset.
+- **Data Spelling Check**: Check for any misspelled columns or data. 
 - **Null Value Check**: Check for any null values in the dataset and delete records with missing data.
 
 ```sql
-SELECT COUNT(*) FROM retail_sales;
-SELECT COUNT(DISTINCT customer_id) FROM retail_sales;
-SELECT DISTINCT category FROM retail_sales;
+SELECT COUNT(*)
+FROM retail_sales;
 
-SELECT * FROM retail_sales
+SELECT COUNT(DISTINCT customer_id)
+FROM retail_sales;
+
+SELECT DISTINCT category
+FROM retail_sales;
+
+ALTER TABLE retail_sales
+RENAME COLUMN quantiy TO quantity;
+
+SELECT *
+FROM retail_sales
 WHERE 
     sale_date IS NULL OR sale_time IS NULL OR customer_id IS NULL OR 
     gender IS NULL OR age IS NULL OR category IS NULL OR 
@@ -64,6 +108,7 @@ WHERE
     sale_date IS NULL OR sale_time IS NULL OR customer_id IS NULL OR 
     gender IS NULL OR age IS NULL OR category IS NULL OR 
     quantity IS NULL OR price_per_unit IS NULL OR cogs IS NULL;
+
 ```
 
 ### 3. Data Analysis & Findings
@@ -80,38 +125,40 @@ WHERE sale_date = '2022-11-05';
 2. **Write a SQL query to retrieve all transactions where the category is 'Clothing' and the quantity sold is more than 4 in the month of Nov-2022**:
 ```sql
 SELECT 
-  *
+    category,
+    SUM(quantity) AS total_quantity
 FROM retail_sales
-WHERE 
-    category = 'Clothing'
-    AND 
-    TO_CHAR(sale_date, 'YYYY-MM') = '2022-11'
-    AND
-    quantity >= 4
+WHERE category = 'Clothing'
+  AND DATE_FORMAT(sale_date, '%Y-%m') = '2022-11'
+GROUP BY category
+HAVING SUM(quantity) >= 4;
+
 ```
 
-3. **Write a SQL query to calculate the total sales (total_sale) for each category.**:
+3. **Write a SQL query to calculate the total sales (total_sale) and total orders for each category.**:
 ```sql
 SELECT 
     category,
-    SUM(total_sale) as net_sale,
+    SUM(total_sale) as total_sale,
     COUNT(*) as total_orders
 FROM retail_sales
-GROUP BY 1
+GROUP BY category;
 ```
 
 4. **Write a SQL query to find the average age of customers who purchased items from the 'Beauty' category.**:
 ```sql
 SELECT
+	category,
     ROUND(AVG(age), 2) as avg_age
 FROM retail_sales
-WHERE category = 'Beauty'
+WHERE category = 'Beauty';
 ```
 
 5. **Write a SQL query to find all transactions where the total_sale is greater than 1000.**:
 ```sql
-SELECT * FROM retail_sales
-WHERE total_sale > 1000
+SELECT * 
+FROM retail_sales
+WHERE total_sale > 1000;
 ```
 
 6. **Write a SQL query to find the total number of transactions (transaction_id) made by each gender in each category.**:
@@ -119,32 +166,24 @@ WHERE total_sale > 1000
 SELECT 
     category,
     gender,
-    COUNT(*) as total_trans
+    COUNT(*) AS transactions
 FROM retail_sales
-GROUP 
-    BY 
-    category,
-    gender
-ORDER BY 1
+GROUP BY category, gender;
 ```
 
 7. **Write a SQL query to calculate the average sale for each month. Find out best selling month in each year**:
 ```sql
-SELECT 
-       year,
-       month,
-    avg_sale
-FROM 
-(    
-SELECT 
-    EXTRACT(YEAR FROM sale_date) as year,
-    EXTRACT(MONTH FROM sale_date) as month,
-    AVG(total_sale) as avg_sale,
-    RANK() OVER(PARTITION BY EXTRACT(YEAR FROM sale_date) ORDER BY AVG(total_sale) DESC) as rank
-FROM retail_sales
-GROUP BY 1, 2
-) as t1
-WHERE rank = 1
+SELECT
+    sale_month,
+    avg_sales,
+    RANK() OVER (ORDER BY avg_sales DESC) AS sales_rank
+FROM (
+SELECT
+        DATE_FORMAT(sale_date, '%Y-%m') AS sale_month,
+        ROUND(AVG(total_sale), 2) AS avg_sales
+    FROM retail_sales
+    GROUP BY sale_month
+) AS monthly_sales;
 ```
 
 8. **Write a SQL query to find the top 5 customers based on the highest total sales **:
@@ -153,75 +192,62 @@ SELECT
     customer_id,
     SUM(total_sale) as total_sales
 FROM retail_sales
-GROUP BY 1
-ORDER BY 2 DESC
-LIMIT 5
+GROUP BY customer_id
+ORDER BY total_sales DESC
+LIMIT 5;
 ```
 
 9. **Write a SQL query to find the number of unique customers who purchased items from each category.**:
 ```sql
-SELECT 
-    category,    
-    COUNT(DISTINCT customer_id) as cnt_unique_cs
+SELECT
+	category,
+    COUNT(DISTINCT customer_id) unique_customers
 FROM retail_sales
-GROUP BY category
+GROUP BY category;
 ```
 
 10. **Write a SQL query to create each shift and number of orders (Example Morning <12, Afternoon Between 12 & 17, Evening >17)**:
 ```sql
-WITH hourly_sale
-AS
+WITH hourly_sales AS 
 (
 SELECT *,
-    CASE
-        WHEN EXTRACT(HOUR FROM sale_time) < 12 THEN 'Morning'
-        WHEN EXTRACT(HOUR FROM sale_time) BETWEEN 12 AND 17 THEN 'Afternoon'
-        ELSE 'Evening'
-    END as shift
+	CASE 
+		WHEN EXTRACT(HOUR FROM sale_time) < 12 THEN 'Morning'
+		WHEN EXTRACT(HOUR FROM sale_time) BETWEEN 12 AND 17 THEN 'Afternoon'
+        ELSE 'Evening' 
+	END AS shift,
+    CASE 
+		WHEN EXTRACT(HOUR FROM sale_time) < 12 THEN 1
+		WHEN EXTRACT(HOUR FROM sale_time) BETWEEN 12 AND 17 THEN 2
+        ELSE 3
+	END AS shift_order
 FROM retail_sales
 )
-SELECT 
-    shift,
-    COUNT(*) as total_orders    
-FROM hourly_sale
-GROUP BY shift
+SELECT
+	shift,
+    shift_order,
+	COUNT(*) total_orders
+FROM hourly_sales
+GROUP BY shift, shift_order
+ORDER BY shift_order
 ```
 
-## Findings
+## Findings & Reports
 
-- **Customer Demographics**: The dataset includes customers from various age groups, with sales distributed across different categories such as Clothing and Beauty.
-- **High-Value Transactions**: Several transactions had a total sale amount greater than 1000, indicating premium purchases.
-- **Sales Trends**: Monthly analysis shows variations in sales, helping identify peak seasons.
-- **Customer Insights**: The analysis identifies the top-spending customers and the most popular product categories.
-
-## Reports
-
-- **Sales Summary**: A detailed report summarizing total sales, customer demographics, and category performance.
-- **Trend Analysis**: Insights into sales trends across different months and shifts.
-- **Customer Insights**: Reports on top customers and unique customer counts per category.
+- **Customer Demographics**: The average age of a customer is 41 years old for both men and women.
+- **High-Value Transactions**: Purchases over $1,000 are made by majorily customers age 37 or over.
+- **Customer Insights**: Customers purchase more quantity of products in Electronics and Clothing. 
+- **Sales Summary**: This dataset shows 2,000 total transactions and generating roughly over $900,000 in revenue. On average, each order was worth $456, indicating a moderate average order value. The most popular categories were both Electronics and Clothing with very similar sales, followed by Beauty which had a 3.6% lower average purchase-value.
+- **Trend Analysis**: 2022 had slightly higher peaks and lower lows, however, trends for both years remain similar with 2023 having slightly lower on-average overall revenue. 
 
 ## Conclusion
 
-This project serves as a comprehensive introduction to SQL for data analysts, covering database setup, data cleaning, exploratory data analysis, and business-driven SQL queries. The findings from this project can help drive business decisions by understanding sales patterns, customer behavior, and product performance.
+The retail dataset highlights that customers average 41 years old, with high-value purchases over $1,000 largely made by those aged 37 and above. While Electronics and Clothing drive the highest sales volumes, Beauty lags slightly in purchase value. Overall, 2,000 transactions generated over $900,000 in revenue, with an average order value of $456.
 
-## How to Use
+However, year-to-date sales are trending below the previous year, suggesting potential challenges in sustaining growth. The concentration of spending among older customers underscores the importance of retaining this group while finding ways to engage younger buyers to stabilize future sales.
 
-1. **Clone the Repository**: Clone this project repository from GitHub.
-2. **Set Up the Database**: Run the SQL scripts provided in the `database_setup.sql` file to create and populate the database.
-3. **Run the Queries**: Use the SQL queries provided in the `analysis_queries.sql` file to perform your analysis.
-4. **Explore and Modify**: Feel free to modify the queries to explore different aspects of the dataset or answer additional business questions.
-
-## Author - Zero Analyst
+## Author - Travis the Analyst
 
 This project is part of my portfolio, showcasing the SQL skills essential for data analyst roles. If you have any questions, feedback, or would like to collaborate, feel free to get in touch!
-
-### Stay Updated and Join the Community
-
-For more content on SQL, data analysis, and other data-related topics, make sure to follow me on social media and join our community:
-
-- **YouTube**: [Subscribe to my channel for tutorials and insights](https://www.youtube.com/@zero_analyst)
-- **Instagram**: [Follow me for daily tips and updates](https://www.instagram.com/zero_analyst/)
-- **LinkedIn**: [Connect with me professionally](https://www.linkedin.com/in/najirr)
-- **Discord**: [Join our community to learn and grow together](https://discord.gg/36h5f2Z5PK)
 
 Thank you for your support, and I look forward to connecting with you!
